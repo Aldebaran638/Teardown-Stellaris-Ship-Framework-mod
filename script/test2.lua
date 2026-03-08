@@ -31,7 +31,7 @@ function server.init()
     server.chargeTime = 20
 
     -- 发射持续时间
-    server.launchTime = 0
+    server.launchTime = 1
 
     -- 初始化当前飞船
     server.shipBody = FindBody("launcher", false)
@@ -225,7 +225,7 @@ function server.serverTick(dt)
             -- 结束蓄力,开始发射的第一帧
             -- 切换到发射状态
             server.weaponState = "launching"
-            server.launchTime = 0.2
+            server.launchTime = 1
         end
     elseif state == "launching" then
         server.launchTime = server.launchTime - dt

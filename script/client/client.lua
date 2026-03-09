@@ -67,6 +67,7 @@ function client_ReceiveBroadcastChargingStart(shipBodyId, firePosOffsetShip, wea
                     hitTarget = nil,
                     didHit = nil,
                     didHitStellarisBody = nil,
+                    normal = nil,
                 }
             }
         }
@@ -81,10 +82,11 @@ function client_ReceiveBroadcastChargingStart(shipBodyId, firePosOffsetShip, wea
     xSlot.hitTarget = nil
     xSlot.didHit = nil
     xSlot.didHitStellarisBody = nil
+    xSlot.hitNormal = nil
 end
 
 -- 客户端函数:接收来自客户端的发射广播 在发射的第一帧被调用
-function client_ReceiveBroadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType)
+function client_ReceiveBroadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType, normal)
     -- 确保这个body在客户端表中
     if not client.ships[shipBodyId] then
         client.ships[shipBodyId] = {
@@ -98,6 +100,7 @@ function client_ReceiveBroadcastLaunchingStart(shipBodyId, firePoint, hitPoint, 
                     hitTarget = nil,
                     didHit = nil,
                     didHitStellarisBody = nil,
+                    normal = nil,
                 }
             }
         }
@@ -112,6 +115,7 @@ function client_ReceiveBroadcastLaunchingStart(shipBodyId, firePoint, hitPoint, 
     xSlot.hitTarget = hitTarget
     xSlot.didHit = didHit
     xSlot.didHitStellarisBody = didHitStellarisBody
+    xSlot.hitNormal = normal
 end
 
 -- 客户端函数:接收来自客户端的空闲广播 在空闲的第一帧被调用
@@ -133,6 +137,7 @@ function client_ReceiveBroadcastWeaponIdle(shipBodyId)
                     hitTarget = nil,
                     didHit = nil,
                     didHitStellarisBody = nil,
+                    normal = nil,
                 }
             }
         }
@@ -147,11 +152,13 @@ function client_ReceiveBroadcastWeaponIdle(shipBodyId)
     xSlot.hitTarget = nil
     xSlot.didHit = nil
     xSlot.didHitStellarisBody = nil
+    xSlot.hitNormal = nil
 end
 
 #include "xSlotChargingFx.lua" -- 充能模块渲染函数
 #include "xSlotLaunchFx.lua" -- 发射模块渲染函数
 #include "shieldHitFx.lua" -- 护盾命中特效模块渲染函数
+#include "hitPointFx.lua" -- 命中点爆炸性粒子特效（独立模块）
 
 function client.clientTick(dt)
     client.fire()
@@ -175,6 +182,9 @@ function client.clientTick(dt)
         elseif state == "launching" then
             -- 发射阶段渲染
             client.xSlotLaunchFxStart(shipBodyId, xSlot.firePoint, xSlot.hitPoint, xSlot.weaponType)
+
+            --命中点特效渲染
+            client.hitPointFxStart(xSlot.didHit, xSlot.hitPoint, xSlot.hitNormal)
         elseif state == "idle" then
             -- 静默阶段不做任何事情
         end
@@ -182,8 +192,15 @@ function client.clientTick(dt)
     -- 命中特效独立播放：显式把主脚本的 local shieldRadius 传给模块
     client.shieldHitFxTick(GetTime(), shieldRadius)
 
+    -- 单独的命中点爆炸性特效 tick
+    if client.hitPointFxTick ~= nil then
+        client.hitPointFxTick(GetTime())
+    end
+
     -- 仅对 charging 特效做一次轻量 GC（不会影响其它特效）
     client.xSlotChargingFxTick(GetTime())
 
     client.xSlotLaunchFxTick(GetTime())
+
+    client.hitPointFxTick(GetTime())
 end

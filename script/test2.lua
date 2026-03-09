@@ -10,11 +10,14 @@ server = server or {}
 
 -- 外来数据
 -- 对于外来数据.当前阶段没有将这些数据分离的情况下,需要将这些函数放在server里,因为它们在server里被大量调用.至于client,要是用的话由server传进去
-local firePosOffsetShip = Vec(0,0,4) -- 发射点相对于飞船中心的偏移
-local fireDirRelative = Vec(0,0,1) -- 发射方向
-local weaponType = "tachyonLance" -- 武器类型,用于客户端渲染时区分不同武器的特效
-local maxRange = 2000 -- 武器最大射程
-local shieldRadius = 7 --  球形护盾半径
+-- 外来数据：从统一的数据表加载（默认回退值可保证兼容）
+#include "weapon_data.lua"
+local weaponSettings = (weaponData and weaponData.tachyonLance) or {}
+local firePosOffsetShip = weaponSettings.firePosOffsetShip or Vec(0, 0, 4) -- 发射点相对于飞船中心的偏移
+local fireDirRelative = weaponSettings.fireDirRelative or Vec(0, 0, 1) -- 发射方向
+local weaponType = weaponSettings.weaponType or "tachyonLance" -- 武器类型,用于客户端渲染时区分不同武器的特效
+local maxRange = weaponSettings.maxRange or 1 -- 武器最大射程
+local shieldRadius = weaponSettings.shieldRadius or 20 --  球形护盾半径
 
 function server.init()
     serverTime = 0
@@ -31,7 +34,7 @@ function server.init()
     server.chargeTime = 20
 
     -- 发射持续时间
-    server.launchTime = 1
+    server.launchTime = 0.2
 
     -- 初始化当前飞船
     server.shipBody = FindBody("launcher", false)
@@ -43,7 +46,7 @@ function server_handleFireRequest()
     DebugWatch("server_receiveFireRequest", 111111111111111)
     if server.weaponState == "idle" then
         server.weaponState = "charging"
-        server.chargeTime = 1
+        server.chargeTime = 0.5
     end
 end
 
@@ -130,7 +133,7 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
     -- 3) 射线检测
     QueryRequire("physical")
     QueryRejectBody(shipBodyId)
-    local hit, dist, _normal, shape = QueryRaycast(origin, dir, maxRange)
+    local hit, dist, normal, shape = QueryRaycast(origin, dir, maxRange)
     DebugWatch("server.xslot_computeHitResult",3)
     if not hit then
         local endPos = VecAdd(origin, VecScale(dir, maxRange))
@@ -169,7 +172,7 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
 
     local hitTarget, isHit, isHitStellarisBody = invalidTarget, true, false
     _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-    return endPos, hitTarget, isHit, isHitStellarisBody
+    return endPos, hitTarget, isHit, isHitStellarisBody , normal
 end
 
 -- 根据命中信息结算效果
@@ -198,8 +201,8 @@ end
 
 -- 广播 开始发射
 -- 参数:发射刚体ID,发射点,命中点,是否命中,命中角度,是否命中群星飞船(暂定命中群星飞船就一定会触发护盾特效),武器类型
-function server.broadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType)
-    ClientCall(0, "client_ReceiveBroadcastLaunchingStart", shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType)
+function server.broadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType ,normal)
+    ClientCall(0, "client_ReceiveBroadcastLaunchingStart", shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType, normal)
 end
 
 -- 广播 武器回到 idle
@@ -225,7 +228,7 @@ function server.serverTick(dt)
             -- 结束蓄力,开始发射的第一帧
             -- 切换到发射状态
             server.weaponState = "launching"
-            server.launchTime = 1
+            server.launchTime = 0.2
         end
     elseif state == "launching" then
         server.launchTime = server.launchTime - dt
@@ -245,11 +248,11 @@ function server.serverTick(dt)
             server_broadcastChargingStart(server.shipBody, firePosOffsetShip, weaponType)
         elseif server.weaponState == "launching" then
             -- 根据发射点和飞船朝向计算命中点,命中倾斜角以及命中信息(是否直接命中船体or命中非群星飞船)
-            local endPos, hitTarget, isHit, isHitStellarisBody = server.xslot_computeHitResult(server.shipBody,firePosOffsetShip,fireDirRelative)
+            local endPos, hitTarget, isHit, isHitStellarisBody, normal = server.xslot_computeHitResult(server.shipBody,firePosOffsetShip,fireDirRelative)
             -- 根据信息结算 命中效果
             server.xslot_applyHitResult(endPos,isHit,isHitStellarisBody)
             -- 广播发射信息
-            server.broadcastLaunchingStart(server.shipBody,firePosOffsetShip, endPos, isHit, hitTarget, isHitStellarisBody, weaponType)
+            server.broadcastLaunchingStart(server.shipBody,firePosOffsetShip, endPos, isHit, hitTarget, isHitStellarisBody, weaponType, normal)
         elseif server.weaponState == "idle" then
             -- 广播 结束发射信息
             server_broadcastWeaponIdle(server.shipBody)

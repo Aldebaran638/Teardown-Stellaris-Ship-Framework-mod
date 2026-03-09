@@ -137,48 +137,6 @@ function client.shieldHitFxTick(now, shieldRadius)
                             if round == 1 then
                                 SpawnParticle(fx.hitPoint, Vec(0, 0, 0), roundTime)
 
-                                -- 冲击波粒子：命中点切平面生成多圈密集粒子，沿法线扩散
-                                ParticleReset()
-                                ParticleColor(0.20, 0.95, 1.00, 0.10, 0.35, 1.00)
-                                ParticleRadius(0.13, 0.03, "easeout")
-                                ParticleAlpha(0.85, 0.0)
-                                ParticleGravity(0.0)
-                                ParticleDrag(0.18)
-                                ParticleEmissive(18.0, 0.0)
-                                ParticleCollide(0.0)
-                                -- 多圈冲击波，半径逐步增大
-                                for ring=1,4 do
-                                    local baseCount = 20 + ring * 6
-                                    local count = baseCount + math.random(-4,4)
-                                    local radius = 0.15 * ring + 0.10 * math.random()
-                                    local speedFactor = 5.0 + ring * 2.0
-                                    for i = 1, count do
-                                        local a = ((i - 1) / count) * math.pi * 2.0
-                                        local lateral = VecAdd(VecScale(t1, math.cos(a)), VecScale(t2, math.sin(a)))
-                                        local p = VecAdd(fx.hitPoint, VecScale(lateral, radius))
-                                        local vel = VecAdd(VecScale(lateral, speedFactor + 2.0 * math.random()), VecScale(n, 1.5 * math.random()))
-                                        SpawnParticle(p, vel, 0.16 + 0.12 * math.random())
-                                    end
-                                end
-
-                                -- 飞溅粒子：命中点周围随机生成，速度偏离法线
-                                ParticleReset()
-                                ParticleColor(0.95, 1.0, 1.0, 0.25, 0.95, 1.0)
-                                ParticleRadius(0.09, 0.02, "easeout")
-                                ParticleAlpha(0.9, 0.0)
-                                ParticleGravity(0.0)
-                                ParticleDrag(0.15)
-                                ParticleEmissive(16.0, 0.0)
-                                ParticleCollide(0.0)
-                                local splashCount = 24
-                                for i = 1, splashCount do
-                                    local randDir = VecAdd(VecScale(n, 1.0), VecScale(t1, (math.random()-0.5)*1.6), VecScale(t2, (math.random()-0.5)*1.6))
-                                    local randLen = VecLength(randDir)
-                                    if randLen < 0.001 then randLen = 1.0 end
-                                    local dir = VecScale(randDir, 1.0 / randLen)
-                                    local vel = VecScale(dir, 12.0 + 8.0 * math.random())
-                                    SpawnParticle(fx.hitPoint, vel, 0.16 + 0.10 * math.random())
-                                end
                             else
                                 local R = fxShieldRadius
                                 local maxChord = 2.0 * R

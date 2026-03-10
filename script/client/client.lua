@@ -15,12 +15,18 @@ function client.init()
 
     -- 护盾命中特效参数（你可以直接改这里调效果）
     client.p1 = 0.1 -- 光点半径（固定）
-    client.p2 = 0.5 -- 每一轮外扩的 chord 距离增量
+    client.p2 = 1 -- 每一轮外扩的 chord 距离增量
     client.p3 = 0.18 -- 光点间距（圆周长度 / p3 = 点数）
-    client.p4 = 6    -- 总轮数
+    client.p4 = 3    -- 总轮数
+    client.p5 = 8    -- 每一轮额外增加的光粒数量
+    client.shieldHitBaseParticleCount = 18 -- 护盾命中特效的基础光粒数
     -- 护盾命中特效的“每一轮”持续时间（秒）
-    client.shieldHitRoundTime = 0.1
-
+    client.shieldHitRoundTime = 0.14
+    -- 新增：中心点球面持续发光半径（控制在命中点附近多近的范围内持续产生亮点）
+    client.shieldHitCenterRadius = 0.5
+    client.shieldHitCenterCount = 20
+    -- 每轮环带的基础粒子数（随轮数可递增）
+    client.shieldHitBaseParticleCount = 18
 end
 
 -- 客户端函数:注册飞船刚体工具函数.在每个飞船刚体被创建的第一帧被调用
@@ -48,7 +54,7 @@ end
 function client.fire()
     if InputPressed("lmb") then
         DebugWatch("client_fire", 111111111111111)
-        ServerCall("server_handleFireRequest")
+        ServerCall("server_xSlot_handleFireRequest")
     end
 end
 
@@ -197,7 +203,6 @@ function client.clientTick(dt)
         client.hitPointFxTick(GetTime())
     end
 
-    -- 仅对 charging 特效做一次轻量 GC（不会影响其它特效）
     client.xSlotChargingFxTick(GetTime())
 
     client.xSlotLaunchFxTick(GetTime())

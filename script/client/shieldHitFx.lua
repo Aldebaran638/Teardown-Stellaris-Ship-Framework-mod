@@ -53,15 +53,20 @@ function client.shieldHitFxTick(now, shieldRadius)
     end
 
     -- 参数从 client 上取（允许你运行时随意改）
-    local p1 = (client and client.p1) or 0.10
-    local p2 = (client and client.p2) or 0.50
-    local p3 = (client and client.p3) or 0.18
-    local p4 = (client and client.p4) or 6
-    local roundTime = (client and client.shieldHitRoundTime) or 0.10
+    local p1 = (client and client.p1) or 5 -- 粒子初始半径
+    local p2 = (client and client.p2) or 0.50 -- 每轮环带基础位移
+    local p3 = (client and client.p3) or 0.05 -- 环带粒子最小间距（影响每轮数量）
+    local p4 = (client and client.p4) or 20    -- 轮数
+    local roundTime = (client and client.shieldHitRoundTime) or 0.50
     local fxShieldRadius = shieldRadius or 7
+    -- 新增：中心点球面持续发光半径（控制在命中点附近多近的范围内持续产生亮点）
+    local centerSpawnRadius = (client and client.shieldHitCenterRadius) or 0.5
+    local centerSpawnCount = (client and client.shieldHitCenterCount) or 20
+    -- 每轮环带的基础粒子数（随轮数可递增）
+    local baseParticleCount = (client and client.shieldHitBaseParticleCount) or 18
 
     local shieldTotalTime = math.max(0.0, p4) * math.max(0.001, roundTime)
-    local impactTotalTime = 0.25
+    local impactTotalTime = 1
 
     for id, fx in pairs(client.shieldHitFx.items) do
         local age = now - (fx.startTime or now)
@@ -134,45 +139,48 @@ function client.shieldHitFxTick(now, shieldRadius)
                             ParticleEmissive(18.0, 0.0)
                             ParticleCollide(0.0)
 
-                            if round == 1 then
-                                SpawnParticle(fx.hitPoint, Vec(0, 0, 0), roundTime)
+                            -- 每轮开始或进行时：
+                            -- 1) 中心点附近持续产生随机白色亮点（在命中点附近的球面/球体内随机分布）
+                            for i = 1, centerSpawnCount do
+                                local dirRnd = Vec(math.random()-0.5, math.random()-0.5, math.random()-0.5)
+                                local l = VecLength(dirRnd)
+                                if l < 0.0001 then l = 1.0 end
+                                dirRnd = VecScale(dirRnd, 1.0 / l)
+                                local r = math.random() * centerSpawnRadius
+                                local p = VecAdd(fx.hitPoint, VecScale(dirRnd, r))
+                                local vel = VecScale(dirRnd, 1.5 * (0.5 + math.random()))
+                                ParticleReset()
+                                ParticleColor(1.0, 1.0, 1.0, 0.6, 1.0, 1.0)
+                                ParticleRadius(p1 * 0.9, p1 * 0.5, "easeout")
+                                ParticleAlpha(0.95, 0.0)
+                                ParticleGravity(0.0)
+                                ParticleDrag(0.1)
+                                ParticleEmissive(18.0, 0.0)
+                                ParticleCollide(0.0)
+                                SpawnParticle(p, vel, roundTime)
+                            end
 
-                            else
-                                local R = fxShieldRadius
-                                local maxChord = 2.0 * R
-                                local twoRSq = 2.0 * R * R
-                                local maxPointsPerRing = 128
-
-                                local d = (round - 1) * p2
-                                if d <= 0.0 then
-                                    d = 0.0001
-                                end
-                                if d < maxChord then
-                                    local cosTheta = 1.0 - (d * d) / twoRSq
-                                    if cosTheta > 1.0 then
-                                        cosTheta = 1.0
-                                    elseif cosTheta < -1.0 then
-                                        cosTheta = -1.0
-                                    end
-                                    local sinTheta = math.sqrt(math.max(0.0, 1.0 - cosTheta * cosTheta))
-
-                                    local circleRadius = R * sinTheta
-                                    local circumference = 2.0 * math.pi * circleRadius
-                                    local count = math.floor((circumference / math.max(0.001, p3)) + 0.5)
-                                    if count < 6 then
-                                        count = 6
-                                    elseif count > maxPointsPerRing then
-                                        count = maxPointsPerRing
-                                    end
-
-                                    for i = 1, count do
-                                        local a = ((i - 1) / count) * math.pi * 2.0
-                                        local lateral = VecAdd(VecScale(t1, math.cos(a)), VecScale(t2, math.sin(a)))
-                                        local v = VecAdd(VecScale(n, cosTheta), VecScale(lateral, sinTheta))
-                                        local p = VecAdd(center, VecScale(v, R))
-                                        SpawnParticle(p, Vec(0, 0, 0), roundTime)
-                                    end
-                                end
+                            -- 2) 环带随机波纹扩散（在命中点切平面上以环带形式随机分布亮点）
+                            local inner = math.max(0.0, (round - 1) * p2)
+                            local outer = inner + math.max(0.01, p2 * 1.2)
+                            -- 随轮数增长，环带半径会逐步增大，直到轮数结束
+                            local ringCount = math.floor(baseParticleCount + (round - 1) * 4 + 0.5)
+                            if ringCount < 6 then ringCount = 6 end
+                            for i = 1, ringCount do
+                                local a = math.random() * math.pi * 2.0
+                                local r = inner + math.random() * (outer - inner)
+                                local lateral = VecAdd(VecScale(t1, math.cos(a)), VecScale(t2, math.sin(a)))
+                                local p = VecAdd(fx.hitPoint, VecScale(lateral, r))
+                                local vel = VecAdd(VecScale(lateral, 6.0 + 4.0 * math.random()), VecScale(n, 0.6 * (0.5 + math.random())))
+                                ParticleReset()
+                                ParticleColor(0.1, 0, 1.0, 0.1, 0.7, 1.0)
+                                ParticleRadius(p1, p1 * 0.5, "easeout")
+                                ParticleAlpha(0.95, 0.0)
+                                ParticleGravity(0.0)
+                                ParticleDrag(0.05)
+                                ParticleEmissive(18.0, 0.0)
+                                ParticleCollide(0.0)
+                                SpawnParticle(p, vel, roundTime)
                             end
                         end
                     end

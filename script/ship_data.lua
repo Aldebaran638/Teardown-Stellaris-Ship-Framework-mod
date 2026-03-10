@@ -11,6 +11,9 @@ shipData.enigmaticCruiser = {
     shieldHP = 5000, -- 护盾HP
     armorHP = 3000, -- 装甲HP
     bodyHP = 2000, -- 机体HP
+    shieldRecoveryRate = 50, -- 护盾每秒恢复量
+    armorRecoveryRate = 20, -- 装甲每秒恢复量
+    xSlotNum = 2, -- X位数量
 }
 
 -- 可以在此处继续添加更多武器配置，例如：

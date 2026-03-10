@@ -5,7 +5,7 @@
 	<voxbox pos="-25 0 -25" size="500 1 500"/>
 	<voxbox pos="-1 0.1 -5" size="20 20 2" material="wood" color="0.7 0.5 0.3"/>
 	<spawnpoint pos="9.3 1.5 -19.0" rot="0 180 0"/>
-	<script pos="0.0 6.5 -22.1" file="MOD/script/test2.lua">
+	<script pos="0.0 6.5 -22.1" file="MOD/script/stellarisShip.lua">
 		<body tags="launcher" dynamic="false">
 			<vox pos="0.0 0.0 0.0" file="bomb.vox"/>
 		</body>

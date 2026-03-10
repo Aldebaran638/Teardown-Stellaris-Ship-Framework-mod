@@ -1,49 +1,23 @@
--- 该脚本的body点击左键以后向前方发射快子光矛
-#version 2
-#include "script/include/common.lua"
+-- xSlotControl.lua
+-- 独立的 x 槽控制模块（从 test2.lua 抽取）
+-- 该文件包含射线判定、命中结算以及广播函数
 
----@diagnostic disable: undefined-global
----@diagnostic disable: duplicate-set-field
-
-
-server = server or {}
-
--- 外来数据
--- 对于外来数据.当前阶段没有将这些数据分离的情况下,需要将这些函数放在server里,因为它们在server里被大量调用.至于client,要是用的话由server传进去
 -- 外来数据：从统一的数据表加载（默认回退值可保证兼容）
 #include "weapon_data.lua"
+#include "ship_data.lua"
 local weaponSettings = (weaponData and weaponData.tachyonLance) or {}
+-- 用户自定义数据
 local firePosOffsetShip = weaponSettings.firePosOffsetShip or Vec(0, 0, 4) -- 发射点相对于飞船中心的偏移
 local fireDirRelative = weaponSettings.fireDirRelative or Vec(0, 0, 1) -- 发射方向
+-- 武器参数
 local weaponType = weaponSettings.weaponType or "tachyonLance" -- 武器类型,用于客户端渲染时区分不同武器的特效
 local maxRange = weaponSettings.maxRange or 1 -- 武器最大射程
-local shieldRadius = weaponSettings.shieldRadius or 20 --  球形护盾半径
+-- 飞船参数
+local shieldRadius = shipData.enigmaticCruiser.shieldRadius or 20 --  球形护盾半径
 
-function server.init()
-    serverTime = 0
-    -- 当前武器状态:
-    -- "idle"      空闲
-    -- "charging"  充能中
-    -- "launching" 发射中
-    server.weaponState = "idle"
-
-    -- 上一帧武器状态(用于检测状态变化的第一帧)
-    server.weaponStateLastTick = "idle"
-
-    -- 充能所需时间
-    server.chargeTime = 20
-
-    -- 发射持续时间
-    server.launchTime = 0.2
-
-    -- 初始化当前飞船
-    server.shipBody = FindBody("launcher", false)
-
-end
 
 -- 服务端函数:接收来自客户端的发射请求,设置蓄力时间为非0
-function server_handleFireRequest()
-    DebugWatch("server_receiveFireRequest", 111111111111111)
+function server_xSlot_handleFireRequest()
     if server.weaponState == "idle" then
         server.weaponState = "charging"
         server.chargeTime = 0.5
@@ -57,8 +31,10 @@ end
 --   - 未命中任何 shape: isHit=false,isHitStellarisBody=false,hitTarget=0,endPos=最远点
 --   - 命中 shape 但其父 Body 无 tag "stellarisShip": isHit=true,isHitStellarisBody=false,hitTarget=0,endPos=命中点
 --   - 命中 shape 且其父 Body 有 tag "stellarisShip": isHit=true,isHitStellarisBody=true,hitTarget=该父 Body 的 handle,endPos=命中点
-function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelative)
-    local function _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+function server.xSlot_computeHitResult(shipBodyId, firePosOffset, fireDirRelative)
+    DebugWatch("server.xSlot_computeHitResult", 111111)
+    local function _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+        DebugWatch("_xSlot_dbgReturn", 111111)
         local endPosStr
         if endPos == nil then
             endPosStr = "nil"
@@ -68,7 +44,7 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
             endPosStr = tostring(endPos)
         end
         DebugWatch(
-            "xslot_computeHitResult",
+            "xSlot_computeHitResult",
             string.format(
                 "endPos=%s hitTarget=%s isHit=%s isHitStellarisBody=%s",
                 endPosStr,
@@ -80,6 +56,7 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
     end
 
     local function _raySphereEntryT(origin, dirUnit, center, radius)
+        DebugWatch("_raySphereEntryT", 111111)
         DebugWatch("origin", origin)
         DebugWatch("dirUnit", dirUnit)
         DebugWatch("center", center)
@@ -108,9 +85,9 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
     local invalidTarget = 0
 
     if shipBodyId == nil or shipBodyId == 0 or firePosOffset == nil or fireDirRelative == nil then
-        local endPos, hitTarget, isHit, isHitStellarisBody = Vec(0, 0, 0), invalidTarget, false, false
-        _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-        return endPos, hitTarget, isHit, isHitStellarisBody
+        local endPos, hitTarget, isHit, isHitStellarisBody, normal = Vec(0, 0, 0), invalidTarget, false, false, Vec(0, 1, 0)
+        _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+        return endPos, hitTarget, isHit, isHitStellarisBody, normal
     end
 
     -- 1) 将发射点偏移转换成世界坐标
@@ -134,19 +111,19 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
     QueryRequire("physical")
     QueryRejectBody(shipBodyId)
     local hit, dist, normal, shape = QueryRaycast(origin, dir, maxRange)
-    DebugWatch("server.xslot_computeHitResult",3)
+    DebugWatch("server.xSlot_computeHitResult",3)
     if not hit then
         local endPos = VecAdd(origin, VecScale(dir, maxRange))
         local hitTarget, isHit, isHitStellarisBody = invalidTarget, false, false
-        _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-        return endPos, hitTarget, isHit, isHitStellarisBody
+        _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+        return endPos, hitTarget, isHit, isHitStellarisBody, dir
     end
 
     local endPos = VecAdd(origin, VecScale(dir, dist))
     if shape == nil or shape == 0 then
         local hitTarget, isHit, isHitStellarisBody = invalidTarget, true, false
-        _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-        return endPos, hitTarget, isHit, isHitStellarisBody
+        _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+        return endPos, hitTarget, isHit, isHitStellarisBody, normal
     end
 
     local targetBody = GetShapeBody(shape)
@@ -162,26 +139,118 @@ function server.xslot_computeHitResult(shipBodyId, firePosOffset, fireDirRelativ
         DebugWatch("entryT",entryT)
         if entryT ~= nil and entryT <= maxRange then
             endPos = VecAdd(origin, VecScale(dir, entryT))
-            DebugWatch("server.xslot_computeHitResult",4)
+            DebugWatch("server.xSlot_computeHitResult",4)
         end
 
         local hitTarget, isHit, isHitStellarisBody = targetBody, true, true
-        _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-        return endPos, hitTarget, isHit, isHitStellarisBody
+        _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+        return endPos, hitTarget, isHit, isHitStellarisBody, normal
     end
 
     local hitTarget, isHit, isHitStellarisBody = invalidTarget, true, false
-    _xslot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
-    return endPos, hitTarget, isHit, isHitStellarisBody , normal
+    _xSlot_dbgReturn(endPos, hitTarget, isHit, isHitStellarisBody)
+    return endPos, hitTarget, isHit, isHitStellarisBody, normal
 end
 
 -- 根据命中信息结算效果
 -- 如果isHitStellarisBody为true则说明命中的是群星飞船,命中后服务器不做任何事情.如果isHitStellarisBody为false但isHit为true则说明命中的是非群星飞船,在命中点产生一次半径为4的爆炸.如果isHit为false则说明没有命中,不产生任何事情.
-function server.xslot_applyHitResult(endPos,isHit,isHitStellarisBody)
+function server.xSlot_applyHitResult(endPos, hitTarget, isHit, isHitStellarisBody, weaponType)
+    DebugWatch("server.xSlot_applyHitResult", 111111)
     if not isHit then
         return
     end
     if isHitStellarisBody then
+        local targetShip = server.ensureShipState(hitTarget, defaultShipType)
+        if targetShip == nil then
+            return
+        end
+
+        local targetShipData = (shipData and shipData[targetShip.shipType]) or (shipData and shipData[defaultShipType]) or {}
+        local targetWeaponData = (weaponData and weaponData[weaponType]) or (weaponData and weaponData.tachyonLance) or {}
+        local damageMin = targetWeaponData.damageMin or 0
+        local damageMax = targetWeaponData.damageMax or damageMin
+        if damageMax < damageMin then
+            damageMax = damageMin
+        end
+
+        local rolledDamage = damageMin
+        if damageMax > damageMin then
+            rolledDamage = math.random(damageMin, damageMax)
+        end
+
+        DebugWatch(
+            "targetShipHPBefore",
+            string.format(
+                "shieldHP=%s armorHP=%s bodyHP=%s rolledDamage=%s weaponType=%s",
+                tostring(targetShip.shieldHP or 0),
+                tostring(targetShip.armorHP or 0),
+                tostring(targetShip.bodyHP or 0),
+                tostring(rolledDamage),
+                tostring(weaponType)
+            )
+        )
+
+        local function _applyLayerDamage(currentHp, damageFix)
+            DebugWatch("_applyLayerDamage", 111111)
+            local actualDamage = rolledDamage * (damageFix or 1)
+            local nextHp = currentHp - actualDamage
+            if nextHp < 0 then
+                nextHp = 0
+            end
+            return nextHp
+        end
+
+        if (targetShip.shieldHP or 0) > 0 then
+            targetShip.shieldHP = _applyLayerDamage(targetShip.shieldHP, targetWeaponData.shieldFix)
+            if targetShip.shieldHP > (targetShipData.shieldHP or targetShip.shieldHP) then
+                targetShip.shieldHP = targetShipData.shieldHP or targetShip.shieldHP
+            end
+            DebugWatch(
+                "targetShipHPAfter",
+                string.format(
+                    "shieldHP=%s armorHP=%s bodyHP=%s damagedLayer=shield",
+                    tostring(targetShip.shieldHP or 0),
+                    tostring(targetShip.armorHP or 0),
+                    tostring(targetShip.bodyHP or 0)
+                )
+            )
+            return
+        end
+
+        if (targetShip.armorHP or 0) > 0 then
+            targetShip.armorHP = _applyLayerDamage(targetShip.armorHP, targetWeaponData.armorFix)
+            if targetShip.armorHP > (targetShipData.armorHP or targetShip.armorHP) then
+                targetShip.armorHP = targetShipData.armorHP or targetShip.armorHP
+            end
+            DebugWatch(
+                "targetShipHPAfter",
+                string.format(
+                    "shieldHP=%s armorHP=%s bodyHP=%s damagedLayer=armor",
+                    tostring(targetShip.shieldHP or 0),
+                    tostring(targetShip.armorHP or 0),
+                    tostring(targetShip.bodyHP or 0)
+                )
+            )
+            return
+        end
+
+        if (targetShip.bodyHP or 0) > 0 then
+            targetShip.bodyHP = _applyLayerDamage(targetShip.bodyHP, targetWeaponData.bodyFix)
+            if targetShip.bodyHP > (targetShipData.bodyHP or targetShip.bodyHP) then
+                targetShip.bodyHP = targetShipData.bodyHP or targetShip.bodyHP
+            end
+            DebugWatch(
+                "targetShipHPAfter",
+                string.format(
+                    "shieldHP=%s armorHP=%s bodyHP=%s damagedLayer=body",
+                    tostring(targetShip.shieldHP or 0),
+                    tostring(targetShip.armorHP or 0),
+                    tostring(targetShip.bodyHP or 0)
+                )
+            )
+            return
+        end
+
         return
     end
     if endPos == nil then
@@ -193,30 +262,28 @@ function server.xslot_applyHitResult(endPos,isHit,isHitStellarisBody)
 end
 
 -- 广播 开始充能
-
-function server_broadcastChargingStart(shipBodyId, firePosOffsetShip, weaponType)
+function server.xSlot_broadcastChargingStart(shipBodyId, firePosOffsetShip, weaponType)
+    DebugWatch("server_broadcastChargingStart", 111111)
     -- 广播给所有客户端
     ClientCall(0, "client_ReceiveBroadcastChargingStart", shipBodyId, firePosOffsetShip, weaponType)
 end
 
 -- 广播 开始发射
 -- 参数:发射刚体ID,发射点,命中点,是否命中,命中角度,是否命中群星飞船(暂定命中群星飞船就一定会触发护盾特效),武器类型
-function server.broadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType ,normal)
+function server.xSlot_broadcastLaunchingStart(shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType ,normal)
+    DebugWatch("server.broadcastLaunchingStart", 111111)
     ClientCall(0, "client_ReceiveBroadcastLaunchingStart", shipBodyId, firePoint, hitPoint, didHit, hitTarget, didHitStellarisBody, weaponType, normal)
 end
 
 -- 广播 武器回到 idle
-function server_broadcastWeaponIdle(shipBodyId)
+function server.xSlot_broadcastWeaponIdle(shipBodyId)
+    DebugWatch("server_broadcastWeaponIdle", 111111)
     -- 广播给所有客户端：该 ship 的 xSlot 回到 idle
     ClientCall(0, "client_ReceiveBroadcastWeaponIdle", shipBodyId)
 end
 
--- 在tick中使用到的变量:
--- server.weaponState 当前武器状态("idle"/"charging"/"launching")
--- server.weaponStateLastTick 武器在上一帧的状态(用于检测状态变化的第一帧)
--- server.chargeTime 飞船充能所需时间
--- server.launchTime 飞船发射持续时间
-function server.serverTick(dt)
+function server.xSlotControlTick(dt)
+    DebugWatch("server.xSlotControlTick", 111111)
     local state = server.weaponState
     DebugWatch("weaponState", state)
     ------------------------------------------------
@@ -245,37 +312,19 @@ function server.serverTick(dt)
     if server.weaponState ~= server.weaponStateLastTick then
         if server.weaponState == "charging" then
             -- 开始蓄力的第一帧,需要广播蓄力信息:广播发射刚体,发射点(相对于飞船)以及武器类型
-            server_broadcastChargingStart(server.shipBody, firePosOffsetShip, weaponType)
+            server.xSlot_broadcastChargingStart(server.shipBody, firePosOffsetShip, weaponType)
         elseif server.weaponState == "launching" then
             -- 根据发射点和飞船朝向计算命中点,命中倾斜角以及命中信息(是否直接命中船体or命中非群星飞船)
-            local endPos, hitTarget, isHit, isHitStellarisBody, normal = server.xslot_computeHitResult(server.shipBody,firePosOffsetShip,fireDirRelative)
+            local endPos, hitTarget, isHit, isHitStellarisBody, normal = server.xSlot_computeHitResult(server.shipBody,firePosOffsetShip,fireDirRelative)
             -- 根据信息结算 命中效果
-            server.xslot_applyHitResult(endPos,isHit,isHitStellarisBody)
+            server.xSlot_applyHitResult(endPos, hitTarget, isHit, isHitStellarisBody, weaponType)
             -- 广播发射信息
-            server.broadcastLaunchingStart(server.shipBody,firePosOffsetShip, endPos, isHit, hitTarget, isHitStellarisBody, weaponType, normal)
+            server.xSlot_broadcastLaunchingStart(server.shipBody,firePosOffsetShip, endPos, isHit, hitTarget, isHitStellarisBody, weaponType, normal)
         elseif server.weaponState == "idle" then
             -- 广播 结束发射信息
-            server_broadcastWeaponIdle(server.shipBody)
+            server.xSlot_broadcastWeaponIdle(server.shipBody)
         end
     end
     server.weaponStateLastTick = server.weaponState
 end
-
-
-#include "client/client.lua"
-
-
--- 客户端 tick：只调用总控函数
-function client.tick(dt)
-    client.clientTick(dt)
-end
-
-function client.draw()
-end
-
-function server.tick(dt)
-    serverTime = serverTime + (dt or 0)
-    server.serverTick(dt)
-end
-
 
